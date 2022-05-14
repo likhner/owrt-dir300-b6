@@ -1,0 +1,65 @@
+name: Build and publish
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Master
+      uses: actions/checkout@v3
+
+    - name: Setup
+      run: |
+        sudo apt-get update
+        sudo apt-get full-upgrade
+        sudo apt install build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python
+
+    - name: Preparing
+      run: |
+        mkdir openwrt
+        cd openwrt
+        wget https://downloads.openwrt.org/releases/17.01.7/targets/ramips/rt305x/lede-imagebuilder-17.01.7-ramips-rt305x.Linux-x86_64.tar.xz
+        tar xf lede-imagebuilder-17.01.7-ramips-rt305x.Linux-x86_64.tar.xz
+
+    - name: Make
+      run: |
+        cd openwrt/lede-imagebuilder-17.01.7-ramips-rt305x.Linux-x86_64
+        make image PROFILE="dir-300-b7" CONFIG_IPV6=n PACKAGES="uhttpd uhttpd-mod-ubus libiwinfo-lua luci-base luci-app-firewall luci-mod-admin-full luci-theme-bootstrap -ppp -ppp-mod-pppoe -ip6tables -odhcp6c -kmod-ipv6 -kmod-ip6tables -odhcpd-ipv6only -opkg"
+
+    - name: Upload Build
+      uses: actions/upload-artifact@v3
+      with:
+        path: /home/runner/work/owrt-dir300-b6/owrt-dir300-b6/openwrt/lede-imagebuilder-17.01.7-ramips-rt305x.Linux-x86_64/build_dir/target-mipsel_24kc_musl-1.1.16/linux-ramips_rt305x/tmp/lede-17.01.7-ramips-rt305x-dir-300-b7-squashfs-sysupgrade.bin
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Master
+      uses: actions/checkout@v3
+
+    - name: Download builds
+      uses: actions/download-artifact@v3
+      with:
+        name: artifact
+        path: out
+
+    - name: Create GitHub release
+      id: github_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v17.01.7
+        release_name: OpenWrt v17.01.7 for D-Link DIR-300 B6
+
+    - name: Upload build to GitHub release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.github_release.outputs.upload_url }}
+        asset_path: /home/runner/work/owrt-dir300-b6/owrt-dir300-b6/out/lede-17.01.7-ramips-rt305x-dir-300-b7-squashfs-sysupgrade.bin
+        asset_name: lede-17.01.7-ramips-rt305x-dir-300-b7-squashfs-sysupgrade.bin
+        asset_content_type: application/octet-stream
